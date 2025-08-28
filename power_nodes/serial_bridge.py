@@ -43,7 +43,7 @@ class PowerBridgeNode(Node):
         self.read_thread = threading.Thread(target=self.read_loop, daemon=True)
         self.read_thread.start()
 
-        self.indicator_yellow_sub = self.create_subscription(Bool,"power/indicator_yellow",self.send_orange,1)
+        self.indicator_yellow_sub = self.create_subscription(Bool,"power/indicator_yellow",self.send_yellow,1)
         self.indicator_green_sub = self.create_subscription(Bool,"power/indicator_green",self.send_green,1)
 
 

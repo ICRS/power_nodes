@@ -66,6 +66,7 @@ class PowerNode(Node):
             msg = Bool()
             msg.data = False
             self.yellow_pub.publish(msg)
+            self.green_status = not self.green_status
         else:
             self.get_logger().info("Drive joy not detected, flashing yellow")
             msg = Bool()
@@ -74,6 +75,7 @@ class PowerNode(Node):
             msg = Bool()
             msg.data = False
             self.green_pub.publish(msg)
+            self.yellow_status = not self.yellow_status
     
 
 
