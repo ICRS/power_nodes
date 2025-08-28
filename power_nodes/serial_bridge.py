@@ -8,10 +8,14 @@ import time
 import re
 import threading
 
-COMMS_CURRENT = re.compile(r"<I_COMMS:([0-9]+)>")
-ARM_CURRENT = re.compile(r"<I_ARM:([0-9]+)>")
-DRILL_CURRENT = re.compile(r"<I_DRILL:([0-9]+)>")
-BATTERY_VOLTAGE = re.compile(r"<V_BAT:([0-9]+)>")
+
+COMMS_CURRENT       = re.compile(r"<I_COMMS:([0-9]+)>")
+ARM_CURRENT         = re.compile(r"<I_ARM:([0-9]+)>")
+DRILL_CURRENT       = re.compile(r"<I_DRILL:([0-9]+)>")
+BATTERY_VOLTAGE     = re.compile(r"<V_BAT:([0-9]+)>")
+BATTERY_TEMPERATURE = re.compile(r"<TEMP_BAT:([-+]?[0-9]*\.?[0-9]+)>")
+BATTERY_HUMIDITY    = re.compile(r"<HUMID_BAT:([-+]?[0-9]*\.?[0-9]+)>")
+
 
 voltage_table = [
     (16.80, 100),
@@ -38,13 +42,13 @@ voltage_table = [
 
 
 class PowerBridgeNode(Node):
+
     def __init__(self):
         super().__init__('power_bridge')
         ports = sorted(glob.glob('/dev/ttyACM*'))
         if not ports:
             self.get_logger().error("No /dev/ttyACM* devices found.")
             raise RuntimeError("No ACM serial device found.")
-
 
         # Setup serial connection
         self.ser = None
@@ -58,17 +62,19 @@ class PowerBridgeNode(Node):
             except serial.SerialException as e:
                 self.get_logger().warn(f"Failed to open {port}: {e}")
 
-        self.comms_current = self.create_publisher(Float32,"comms/current",1)
-        self.drill_current = self.create_publisher(Float32,"drill/current",1)
-        self.arm_current = self.create_publisher(Float32,"arm/current",1)
+        self.comms_current   = self.create_publisher(Float32,"comms/current",1)
+        self.drill_current   = self.create_publisher(Float32,"drill/current",1)
+        self.arm_current     = self.create_publisher(Float32,"arm/current",1)
         self.battery_voltage = self.create_publisher(BatteryState,"vbat",1)
-        
+
+        self.battery_temperature = self.create_publisher(Float32,"battery/temperature", 1)
+        self.battery_humidity    = self.create_publisher(Float32,"battery/humidity", 1)
 
         self.read_thread = threading.Thread(target=self.read_loop, daemon=True)
         self.read_thread.start()
 
         self.indicator_yellow_sub = self.create_subscription(Bool,"power/indicator_yellow",self.send_yellow,1)
-        self.indicator_green_sub = self.create_subscription(Bool,"power/indicator_green",self.send_green,1)
+        self.indicator_green_sub  = self.create_subscription(Bool,"power/indicator_green",self.send_green,1)
 
     def lipo_percentage(voltage):
     # Clamp voltage range
@@ -76,7 +82,7 @@ class PowerBridgeNode(Node):
             return 100.0
         if voltage <= voltage_table[-1][0]:
             return 0.0
-    
+
     # Interpolate
         for i in range(len(voltage_table) - 1):
             v_high, p_high = voltage_table[i]
@@ -84,7 +90,7 @@ class PowerBridgeNode(Node):
             if v_low <= voltage <= v_high:
                 # Linear interpolation
                 return p_low + (p_high - p_low) * (voltage - v_low) / (v_high - v_low)
-    
+
         return None  # Shouldn't reach here
 
     def destroy_node(self):
@@ -101,7 +107,7 @@ class PowerBridgeNode(Node):
                 while '\n' in buffer:
                     line, buffer = buffer.split('\n', 1)
                     self.parse_line(line.strip())
-        
+
     def parse_line(self, line):
         if m := COMMS_CURRENT.match(line):
             msg = Float32()
@@ -117,7 +123,17 @@ class PowerBridgeNode(Node):
             msg = Float32()
             msg.data = float(m.group(1))/1000
             self.drill_current.publish(msg)
-        
+
+        elif m := BATTERY_TEMPERATURE.match(line):
+            msg = Float32()
+            msg.data = float(m.group(1))
+            self.battery_temperature.publish(msg)
+
+        elif m := BATTERY_HUMIDITY.match(line):
+            msg = Float32()
+            msg.data = float(m.group(1))
+            self.battery_humidity.publish(msg)
+
         elif m := BATTERY_VOLTAGE.match(line):
             msg = BatteryState()
             msg.voltage = float(m.group(1))/1000
@@ -127,18 +143,17 @@ class PowerBridgeNode(Node):
             self.battery_voltage.publish(msg)
         else:
             self.get_logger().warn(f"Unknown line: {line}")
-    
+
     def send_yellow(self,msg:Bool):
             out = f"<LED_Y:{int(msg.data)}>\n"
             out_bytes = bytes(out.encode("utf-8"))
             self.ser.write(out_bytes)
-    
+
     def send_green(self,msg:Bool):
             out = f"<LED_G:{int(msg.data)}>\n"
             out_bytes = bytes(out.encode("utf-8"))
             self.ser.write(out_bytes)
 
-   
 
 def main(args=None):
     rclpy.init(args=args)
