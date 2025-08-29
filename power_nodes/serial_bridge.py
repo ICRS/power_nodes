@@ -76,7 +76,7 @@ class PowerBridgeNode(Node):
         self.indicator_yellow_sub = self.create_subscription(Bool,"power/indicator_yellow",self.send_yellow,1)
         self.indicator_green_sub  = self.create_subscription(Bool,"power/indicator_green",self.send_green,1)
 
-    def lipo_percentage(voltage):
+    def lipo_percentage(self,voltage):
     # Clamp voltage range
         if voltage >= voltage_table[0][0]:
             return 100.0
@@ -137,9 +137,9 @@ class PowerBridgeNode(Node):
         elif m := BATTERY_VOLTAGE.match(line):
             msg = BatteryState()
             msg.voltage = float(m.group(1))/1000
-            msg.design_capacity = 20
+            msg.design_capacity = 20.0
             msg.present = True
-            msg.percentage = self.lipo_percentage(msg.voltage/100)
+            msg.percentage = self.lipo_percentage(msg.voltage)
             self.battery_voltage.publish(msg)
         else:
             self.get_logger().warn(f"Unknown line: {line}")
